@@ -98,9 +98,6 @@ create policy "Donors can remove their offers"
 
 create or replace function public.protect_offer_ownership()
 returns trigger
-language plpgsql
-security definer
-set search_path = public
 as $$
 begin
   if old.donor_id is distinct from new.donor_id then
@@ -133,7 +130,10 @@ begin
 
   return new;
 end;
-$$;
+$$
+language plpgsql
+security definer
+set search_path = public;
 
 drop trigger if exists protect_offer_ownership_before_update on public.offers;
 create trigger protect_offer_ownership_before_update
@@ -146,4 +146,5 @@ begin
   alter publication supabase_realtime add table public.offers;
 exception
   when duplicate_object then null;
-end $$;
+end
+$$ language plpgsql;
