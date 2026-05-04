@@ -1,4 +1,4 @@
 window.PLATESHARE_SUPABASE = {
-  url: "",
-  anonKey: "",
+  url: "https://your-project.supabase.co",
+  anonKey: "your-anon-key",
 };
