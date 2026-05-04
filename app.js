@@ -1,4 +1,5 @@
-const storageKey = "plateshare-state-v2";
+const storageKey = "plateshare-state-v3";
+const tableName = "offers";
 
 const seedOffers = [
   {
@@ -11,6 +12,7 @@ const seedOffers = [
     contact: "Anika, kitchen lead",
     safetyNotes: "Prepared at 5 PM. Vegetarian. Contains cashew and dairy.",
     status: "available",
+    createdAt: new Date().toISOString(),
   },
   {
     id: createId(),
@@ -22,6 +24,7 @@ const seedOffers = [
     contact: "Store desk",
     safetyNotes: "Unopened bread packs. Fruit is ripe and best moved today.",
     status: "claimed",
+    createdAt: new Date().toISOString(),
   },
   {
     id: createId(),
@@ -33,11 +36,15 @@ const seedOffers = [
     contact: "Facilities team",
     safetyNotes: "Individually packed. No onion or garlic.",
     status: "available",
+    createdAt: new Date().toISOString(),
   },
 ];
 
-let state = loadState();
+let state = { offers: [] };
 let activeFilter = "all";
+let dataMode = "local";
+let supabaseClient = null;
+let realtimeChannel = null;
 
 const elements = {
   form: document.querySelector("#offer-form"),
@@ -57,6 +64,7 @@ const elements = {
   metricMeals: document.querySelector("#metric-meals"),
   metricClaimed: document.querySelector("#metric-claimed"),
   metricUrgent: document.querySelector("#metric-urgent"),
+  connectionStatus: document.querySelector("#connection-status"),
 };
 
 function createId() {
@@ -68,7 +76,53 @@ function getClockTime(minutesFromNow) {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-function loadState() {
+async function init() {
+  configureDataSource();
+  setConnectionStatus("loading", dataMode === "supabase" ? "Connecting to Supabase" : "Local demo mode");
+  await loadOffers();
+  subscribeToChanges();
+  render();
+}
+
+function configureDataSource() {
+  const config = window.PLATESHARE_SUPABASE ?? {};
+  const hasSupabaseConfig = Boolean(config.url && config.anonKey);
+  const hasClient = Boolean(window.supabase?.createClient);
+
+  if (hasSupabaseConfig && hasClient) {
+    supabaseClient = window.supabase.createClient(config.url, config.anonKey);
+    dataMode = "supabase";
+    return;
+  }
+
+  dataMode = "local";
+}
+
+async function loadOffers() {
+  if (dataMode === "supabase") {
+    const { data, error } = await supabaseClient
+      .from(tableName)
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error(error);
+      dataMode = "local";
+      state = loadLocalState();
+      setConnectionStatus("offline", "Supabase error, using local demo");
+      return;
+    }
+
+    state = { offers: data.map(fromDatabaseOffer) };
+    setConnectionStatus("online", "Shared Supabase data");
+    return;
+  }
+
+  state = loadLocalState();
+  setConnectionStatus("offline", "Local demo data only");
+}
+
+function loadLocalState() {
   const saved = localStorage.getItem(storageKey);
 
   if (!saved) {
@@ -85,8 +139,24 @@ function loadState() {
   }
 }
 
-function saveState() {
-  localStorage.setItem(storageKey, JSON.stringify(state));
+function saveLocalState() {
+  if (dataMode === "local") {
+    localStorage.setItem(storageKey, JSON.stringify(state));
+  }
+}
+
+function subscribeToChanges() {
+  if (dataMode !== "supabase" || realtimeChannel) {
+    return;
+  }
+
+  realtimeChannel = supabaseClient
+    .channel("public:offers")
+    .on("postgres_changes", { event: "*", schema: "public", table: tableName }, async () => {
+      await loadOffers();
+      render();
+    })
+    .subscribe();
 }
 
 function render() {
@@ -99,7 +169,7 @@ function render() {
   });
 
   renderMetrics();
-  saveState();
+  saveLocalState();
 }
 
 function getVisibleOffers() {
@@ -203,7 +273,7 @@ function renderMetrics() {
   const claimed = state.offers.filter((offer) => offer.status === "claimed");
   const urgent = available.filter((offer) => minutesUntil(offer.availableUntil) <= 90);
   const meals = available.reduce((sum, offer) => sum + Number(offer.portions), 0);
-  const nextOffer = available.sort((a, b) => minutesUntil(a.availableUntil) - minutesUntil(b.availableUntil))[0];
+  const nextOffer = [...available].sort((a, b) => minutesUntil(a.availableUntil) - minutesUntil(b.availableUntil))[0];
 
   elements.metricMeals.textContent = meals;
   elements.metricClaimed.textContent = claimed.length;
@@ -214,20 +284,100 @@ function renderMetrics() {
     : "No open pickups right now. Check claimed deliveries or post a new offer.";
 }
 
-function updateOfferStatus(id, status) {
+async function addOffer(offer) {
+  if (dataMode === "supabase") {
+    const { error } = await supabaseClient.from(tableName).insert(toDatabaseOffer(offer));
+
+    if (error) {
+      console.error(error);
+      setConnectionStatus("offline", "Could not post to Supabase");
+      return;
+    }
+
+    await loadOffers();
+    render();
+    return;
+  }
+
+  state.offers.unshift(offer);
+  render();
+}
+
+async function updateOfferStatus(id, status) {
+  if (dataMode === "supabase") {
+    const { error } = await supabaseClient.from(tableName).update({ status }).eq("id", id);
+
+    if (error) {
+      console.error(error);
+      setConnectionStatus("offline", "Could not update Supabase");
+      return;
+    }
+
+    await loadOffers();
+    render();
+    return;
+  }
+
   state.offers = state.offers.map((offer) => (offer.id === id ? { ...offer, status } : offer));
   render();
 }
 
-function removeOffer(id) {
+async function removeOffer(id) {
+  if (dataMode === "supabase") {
+    const { error } = await supabaseClient.from(tableName).delete().eq("id", id);
+
+    if (error) {
+      console.error(error);
+      setConnectionStatus("offline", "Could not remove from Supabase");
+      return;
+    }
+
+    await loadOffers();
+    render();
+    return;
+  }
+
   state.offers = state.offers.filter((offer) => offer.id !== id);
   render();
 }
 
-elements.form.addEventListener("submit", (event) => {
+function toDatabaseOffer(offer) {
+  return {
+    food_name: offer.foodName,
+    portions: offer.portions,
+    food_type: offer.foodType,
+    pickup_location: offer.location,
+    available_until: offer.availableUntil,
+    contact: offer.contact,
+    safety_notes: offer.safetyNotes,
+    status: offer.status,
+  };
+}
+
+function fromDatabaseOffer(offer) {
+  return {
+    id: offer.id,
+    foodName: offer.food_name,
+    portions: offer.portions,
+    foodType: offer.food_type,
+    location: offer.pickup_location,
+    availableUntil: offer.available_until.slice(0, 5),
+    contact: offer.contact,
+    safetyNotes: offer.safety_notes,
+    status: offer.status,
+    createdAt: offer.created_at,
+  };
+}
+
+function setConnectionStatus(status, text) {
+  elements.connectionStatus.dataset.status = status;
+  elements.connectionStatus.textContent = text;
+}
+
+elements.form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  state.offers.unshift({
+  await addOffer({
     id: createId(),
     foodName: elements.foodName.value.trim(),
     portions: Number(elements.portions.value),
@@ -237,11 +387,11 @@ elements.form.addEventListener("submit", (event) => {
     contact: elements.contact.value.trim(),
     safetyNotes: elements.safetyNotes.value.trim(),
     status: "available",
+    createdAt: new Date().toISOString(),
   });
 
   elements.form.reset();
   elements.foodName.focus();
-  render();
 });
 
 elements.filterButtons.forEach((button) => {
@@ -254,4 +404,4 @@ elements.filterButtons.forEach((button) => {
   });
 });
 
-render();
+init();
