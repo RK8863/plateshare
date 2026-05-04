@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlateShare</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero" aria-labelledby="app-title">
+        <div>
+          <p class="eyebrow">Local food rescue exchange</p>
+          <h1 id="app-title">PlateShare</h1>
+          <p class="hero-copy">
+            Match surplus meals from kitchens, stores, and events with nearby community groups before good food becomes waste.
+          </p>
+        </div>
+        <aside class="impact-panel" aria-label="Current impact">
+          <span>Ready for pickup</span>
+          <strong id="hero-pickups">0 offers nearby</strong>
+          <p id="hero-next">Post a surplus offer to start the exchange.</p>
+        </aside>
+      </section>
+
+      <section class="metrics" aria-label="Exchange summary">
+        <article>
+          <span id="metric-meals">0</span>
+          <p>meals available</p>
+        </article>
+        <article>
+          <span id="metric-claimed">0</span>
+          <p>claimed offers</p>
+        </article>
+        <article>
+          <span id="metric-urgent">0</span>
+          <p>urgent pickups</p>
+        </article>
+      </section>
+
+      <section class="workspace">
+        <article class="panel offer-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">Donate</p>
+              <h2>Post surplus food</h2>
+            </div>
+          </div>
+
+          <form id="offer-form" class="offer-form">
+            <label>
+              Food description
+              <input id="food-name" type="text" placeholder="Vegetable biryani, bread packs, fruit boxes" required />
+            </label>
+            <div class="form-grid">
+              <label>
+                Portions
+                <input id="portions" type="number" min="1" placeholder="25" required />
+              </label>
+              <label>
+                Food type
+                <select id="food-type">
+                  <option>Cooked meal</option>
+                  <option>Packaged food</option>
+                  <option>Produce</option>
+                  <option>Bakery</option>
+                  <option>Other</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              Pickup location
+              <input id="location" type="text" placeholder="Indiranagar community kitchen" required />
+            </label>
+            <div class="form-grid">
+              <label>
+                Available until
+                <input id="available-until" type="time" required />
+              </label>
+              <label>
+                Contact
+                <input id="contact" type="text" placeholder="Phone or coordinator name" required />
+              </label>
+            </div>
+            <label>
+              Safety notes
+              <textarea id="safety-notes" placeholder="Packed at 2 PM, vegetarian, contains dairy"></textarea>
+            </label>
+            <button type="submit">Post offer</button>
+          </form>
+        </article>
+
+        <section class="board">
+          <div class="board-header">
+            <div>
+              <p class="section-kicker">Rescue</p>
+              <h2>Available food</h2>
+            </div>
+            <div class="filters" aria-label="Offer filters">
+              <button class="filter-button is-active" type="button" data-filter="all">All</button>
+              <button class="filter-button" type="button" data-filter="available">Open</button>
+              <button class="filter-button" type="button" data-filter="claimed">Claimed</button>
+            </div>
+          </div>
+
+          <div class="empty-state" id="empty-state">No offers match this view.</div>
+          <div class="offer-list" id="offer-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <template id="offer-template">
+      <article class="offer-card">
+        <div class="offer-topline">
+          <span class="status-pill"></span>
+          <span class="time-pill"></span>
+        </div>
+        <h3></h3>
+        <dl class="offer-facts">
+          <div>
+            <dt>Portions</dt>
+            <dd class="fact-portions"></dd>
+          </div>
+          <div>
+            <dt>Type</dt>
+            <dd class="fact-type"></dd>
+          </div>
+          <div>
+            <dt>Location</dt>
+            <dd class="fact-location"></dd>
+          </div>
+          <div>
+            <dt>Contact</dt>
+            <dd class="fact-contact"></dd>
+          </div>
+        </dl>
+        <p class="safety-copy"></p>
+        <div class="card-actions">
+          <button class="claim-button" type="button">Claim pickup</button>
+          <button class="secondary-button complete-button" type="button">Mark delivered</button>
+          <button class="secondary-button remove-button" type="button">Remove</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
