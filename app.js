@@ -1,4 +1,4 @@
-const storageKey = "plateshare-state-v3";
+const storageKey = "plateshare-state-v4";
 const tableName = "offers";
 
 const seedOffers = [
@@ -12,18 +12,6 @@ const seedOffers = [
     contact: "Anika, kitchen lead",
     safetyNotes: "Prepared at 5 PM. Vegetarian. Contains cashew and dairy.",
     status: "available",
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: createId(),
-    foodName: "Bananas and sealed bread packs",
-    portions: 65,
-    foodType: "Produce",
-    location: "MG Road grocery partner",
-    availableUntil: getClockTime(210),
-    contact: "Store desk",
-    safetyNotes: "Unopened bread packs. Fruit is ripe and best moved today.",
-    status: "claimed",
     createdAt: new Date().toISOString(),
   },
   {
@@ -43,10 +31,22 @@ const seedOffers = [
 let state = { offers: [] };
 let activeFilter = "all";
 let dataMode = "local";
+let currentUser = null;
+let currentProfile = null;
 let supabaseClient = null;
 let realtimeChannel = null;
 
 const elements = {
+  authForm: document.querySelector("#auth-form"),
+  displayName: document.querySelector("#display-name"),
+  email: document.querySelector("#email"),
+  password: document.querySelector("#password"),
+  role: document.querySelector("#role"),
+  signupButton: document.querySelector("#signup-button"),
+  signoutButton: document.querySelector("#signout-button"),
+  accountSummary: document.querySelector("#account-summary"),
+  accountCopy: document.querySelector("#account-copy"),
+  donorNote: document.querySelector("#donor-note"),
   form: document.querySelector("#offer-form"),
   foodName: document.querySelector("#food-name"),
   portions: document.querySelector("#portions"),
@@ -79,6 +79,20 @@ function getClockTime(minutesFromNow) {
 async function init() {
   configureDataSource();
   setConnectionStatus("loading", dataMode === "supabase" ? "Connecting to Supabase" : "Local demo mode");
+
+  if (dataMode === "supabase") {
+    const { data } = await supabaseClient.auth.getSession();
+    currentUser = data.session?.user ?? null;
+    currentProfile = currentUser ? await getProfile(currentUser.id) : null;
+
+    supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+      currentUser = session?.user ?? null;
+      currentProfile = currentUser ? await getProfile(currentUser.id) : null;
+      await loadOffers();
+      render();
+    });
+  }
+
   await loadOffers();
   subscribeToChanges();
   render();
@@ -102,7 +116,7 @@ async function loadOffers() {
   if (dataMode === "supabase") {
     const { data, error } = await supabaseClient
       .from(tableName)
-      .select("*")
+      .select("*, donor:profiles!offers_donor_id_fkey(display_name, role), claimant:profiles!offers_claimed_by_fkey(display_name, role)")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -160,6 +174,9 @@ function subscribeToChanges() {
 }
 
 function render() {
+  renderAccount();
+  renderOfferFormAccess();
+
   const visibleOffers = getVisibleOffers();
   elements.offerList.replaceChildren();
   elements.emptyState.classList.toggle("is-visible", visibleOffers.length === 0);
@@ -170,6 +187,59 @@ function render() {
 
   renderMetrics();
   saveLocalState();
+}
+
+function renderAccount() {
+  const title = elements.accountSummary.querySelector("h2");
+  const isOnline = dataMode === "supabase";
+
+  elements.authForm.hidden = !isOnline;
+
+  if (!isOnline) {
+    title.textContent = "Local demo mode";
+    elements.accountCopy.textContent = "Configure Supabase to enable shared accounts and roles.";
+    return;
+  }
+
+  if (!currentUser || !currentProfile) {
+    title.textContent = "Sign in to use role actions";
+    elements.accountCopy.textContent = "Create one donor account and one receiver account to test the two-party workflow.";
+    elements.signupButton.hidden = false;
+    elements.signoutButton.hidden = true;
+    elements.displayName.hidden = false;
+    elements.email.hidden = false;
+    elements.password.hidden = false;
+    elements.role.hidden = false;
+    elements.authForm.querySelector("[data-auth-action='signin']").hidden = false;
+    return;
+  }
+
+  title.textContent = currentProfile.displayName;
+  elements.accountCopy.textContent = `Signed in as ${currentProfile.role}.`;
+  elements.signupButton.hidden = true;
+  elements.signoutButton.hidden = false;
+  elements.displayName.hidden = true;
+  elements.email.hidden = true;
+  elements.password.hidden = true;
+  elements.role.hidden = true;
+  elements.authForm.querySelector("[data-auth-action='signin']").hidden = true;
+}
+
+function renderOfferFormAccess() {
+  const canPost = dataMode === "local" || currentProfile?.role === "donor";
+
+  elements.form.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = !canPost;
+  });
+
+  if (dataMode === "local") {
+    elements.donorNote.textContent = "Local demo mode: posting only saves to this browser.";
+    return;
+  }
+
+  elements.donorNote.textContent = canPost
+    ? "You are signed in as a donor. New offers will be visible to receivers."
+    : "Sign in as a donor to post surplus food.";
 }
 
 function getVisibleOffers() {
@@ -196,6 +266,10 @@ function createOfferCard(offer) {
   const claimButton = card.querySelector(".claim-button");
   const completeButton = card.querySelector(".complete-button");
   const removeButton = card.querySelector(".remove-button");
+  const canClaim = dataMode === "local" ? offer.status === "available" : currentProfile?.role === "receiver" && offer.status === "available";
+  const canComplete =
+    dataMode === "local" ? offer.status !== "delivered" : currentUser?.id === offer.donorId && offer.status === "claimed";
+  const canRemove = dataMode === "local" || currentUser?.id === offer.donorId;
 
   card.dataset.status = offer.status;
   card.querySelector("h3").textContent = offer.foodName;
@@ -204,20 +278,28 @@ function createOfferCard(offer) {
   card.querySelector(".fact-location").textContent = offer.location;
   card.querySelector(".fact-contact").textContent = offer.contact;
   card.querySelector(".safety-copy").textContent = offer.safetyNotes || "No extra safety notes added.";
+  card.querySelector(".owner-copy").textContent = getOwnerCopy(offer);
 
   statusPill.textContent = getStatusLabel(offer.status);
   statusPill.dataset.status = offer.status;
   timePill.textContent = getPickupText(offer.availableUntil);
   timePill.dataset.urgent = minutesUntil(offer.availableUntil) <= 90;
 
-  claimButton.disabled = offer.status !== "available";
-  completeButton.disabled = offer.status === "delivered";
+  claimButton.disabled = !canClaim;
+  completeButton.disabled = !canComplete;
+  removeButton.disabled = !canRemove;
 
-  claimButton.addEventListener("click", () => updateOfferStatus(offer.id, "claimed"));
+  claimButton.addEventListener("click", () => claimOffer(offer.id));
   completeButton.addEventListener("click", () => updateOfferStatus(offer.id, "delivered"));
   removeButton.addEventListener("click", () => removeOffer(offer.id));
 
   return card;
+}
+
+function getOwnerCopy(offer) {
+  const donor = offer.donorName ? `Donor: ${offer.donorName}` : "Donor: legacy or demo offer";
+  const receiver = offer.claimantName ? `Receiver: ${offer.claimantName}` : "Receiver: not claimed";
+  return `${donor}. ${receiver}.`;
 }
 
 function getStatusLabel(status) {
@@ -284,8 +366,110 @@ function renderMetrics() {
     : "No open pickups right now. Check claimed deliveries or post a new offer.";
 }
 
+async function signIn() {
+  const { data, error } = await supabaseClient.auth.signInWithPassword({
+    email: elements.email.value.trim(),
+    password: elements.password.value,
+  });
+
+  if (error) {
+    setConnectionStatus("offline", error.message);
+    return;
+  }
+
+  currentUser = data.user;
+  currentProfile = await getProfile(currentUser.id);
+
+  if (!currentProfile) {
+    currentProfile = await saveProfile(currentUser.id);
+  }
+
+  elements.password.value = "";
+  render();
+}
+
+async function signUp() {
+  const { data, error } = await supabaseClient.auth.signUp({
+    email: elements.email.value.trim(),
+    password: elements.password.value,
+    options: {
+      data: {
+        display_name: getDisplayName(),
+        role: elements.role.value,
+      },
+    },
+  });
+
+  if (error) {
+    setConnectionStatus("offline", error.message);
+    return;
+  }
+
+  if (!data.session) {
+    setConnectionStatus("loading", "Check your email, then sign in");
+    return;
+  }
+
+  currentUser = data.user;
+  currentProfile = await saveProfile(currentUser.id);
+  elements.password.value = "";
+  render();
+}
+
+async function signOut() {
+  await supabaseClient.auth.signOut();
+  currentUser = null;
+  currentProfile = null;
+  render();
+}
+
+async function getProfile(userId) {
+  const { data, error } = await supabaseClient.from("profiles").select("*").eq("id", userId).maybeSingle();
+
+  if (error) {
+    console.error(error);
+    return null;
+  }
+
+  return data ? fromDatabaseProfile(data) : null;
+}
+
+async function saveProfile(userId) {
+  const profile = {
+    id: userId,
+    display_name: getDisplayName(),
+    role: elements.role.value,
+  };
+  const { data, error } = await supabaseClient.from("profiles").upsert(profile).select("*").single();
+
+  if (error) {
+    console.error(error);
+    setConnectionStatus("offline", "Could not save profile");
+    return null;
+  }
+
+  return fromDatabaseProfile(data);
+}
+
+function getDisplayName() {
+  return elements.displayName.value.trim() || elements.email.value.trim();
+}
+
+function fromDatabaseProfile(profile) {
+  return {
+    id: profile.id,
+    displayName: profile.display_name,
+    role: profile.role,
+  };
+}
+
 async function addOffer(offer) {
   if (dataMode === "supabase") {
+    if (currentProfile?.role !== "donor") {
+      setConnectionStatus("offline", "Only donors can post offers");
+      return;
+    }
+
     const { error } = await supabaseClient.from(tableName).insert(toDatabaseOffer(offer));
 
     if (error) {
@@ -301,6 +485,33 @@ async function addOffer(offer) {
 
   state.offers.unshift(offer);
   render();
+}
+
+async function claimOffer(id) {
+  if (dataMode === "supabase") {
+    if (currentProfile?.role !== "receiver") {
+      setConnectionStatus("offline", "Only receivers can claim pickups");
+      return;
+    }
+
+    const { error } = await supabaseClient
+      .from(tableName)
+      .update({ status: "claimed", claimed_by: currentUser.id })
+      .eq("id", id)
+      .eq("status", "available");
+
+    if (error) {
+      console.error(error);
+      setConnectionStatus("offline", "Could not claim pickup");
+      return;
+    }
+
+    await loadOffers();
+    render();
+    return;
+  }
+
+  updateOfferStatus(id, "claimed");
 }
 
 async function updateOfferStatus(id, status) {
@@ -351,6 +562,7 @@ function toDatabaseOffer(offer) {
     contact: offer.contact,
     safety_notes: offer.safetyNotes,
     status: offer.status,
+    donor_id: currentUser.id,
   };
 }
 
@@ -365,6 +577,10 @@ function fromDatabaseOffer(offer) {
     contact: offer.contact,
     safetyNotes: offer.safety_notes,
     status: offer.status,
+    donorId: offer.donor_id,
+    donorName: offer.donor?.display_name,
+    claimedBy: offer.claimed_by,
+    claimantName: offer.claimant?.display_name,
     createdAt: offer.created_at,
   };
 }
@@ -373,6 +589,19 @@ function setConnectionStatus(status, text) {
   elements.connectionStatus.dataset.status = status;
   elements.connectionStatus.textContent = text;
 }
+
+elements.authForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await signIn();
+});
+
+elements.signupButton.addEventListener("click", async () => {
+  await signUp();
+});
+
+elements.signoutButton.addEventListener("click", async () => {
+  await signOut();
+});
 
 elements.form.addEventListener("submit", async (event) => {
   event.preventDefault();

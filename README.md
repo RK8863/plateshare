@@ -29,3 +29,12 @@ window.PLATESHARE_SUPABASE = {
 ```
 
 When those values are present, PlateShare reads and writes offers from Supabase so multiple devices share the same board. Without them, it falls back to local demo data in the browser.
+
+## Roles
+
+The current Supabase schema supports two roles:
+
+- `donor`: can create offers, remove their own offers, and mark their claimed offers delivered.
+- `receiver`: can claim open offers.
+
+After pulling new schema changes, run `supabase-schema.sql` again in the Supabase SQL editor.

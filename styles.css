@@ -187,6 +187,53 @@ h1 {
   font-weight: 700;
 }
 
+.account-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 18px;
+  border: 1px solid rgba(222, 215, 201, 0.86);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.93);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  backdrop-filter: blur(18px);
+}
+
+.account-summary h2 {
+  margin-bottom: 8px;
+}
+
+.account-summary p:last-child {
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.auth-form {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.auth-form button,
+.auth-form .secondary-button {
+  min-height: 46px;
+}
+
+.auth-form button[data-auth-action="signin"] {
+  border-radius: 8px;
+  background: var(--leaf);
+  color: #fffdf8;
+  font-weight: 800;
+}
+
+.auth-form input,
+.auth-form select {
+  min-width: 0;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(310px, 0.82fr) minmax(0, 1.18fr);
@@ -211,6 +258,16 @@ h1 {
 h2 {
   margin-bottom: 0;
   font-size: 1.25rem;
+}
+
+.panel-note {
+  margin: -4px 0 16px;
+  border-radius: 8px;
+  background: #f5f1e9;
+  padding: 11px 12px;
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.45;
 }
 
 .offer-form {
@@ -407,6 +464,14 @@ dd {
   line-height: 1.5;
 }
 
+.owner-copy {
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .card-actions {
   justify-content: flex-start;
 }
@@ -446,6 +511,7 @@ dd {
 
   .hero,
   .metrics,
+  .account-panel,
   .workspace {
     grid-template-columns: 1fr;
   }
@@ -457,7 +523,8 @@ dd {
 
 @media (max-width: 560px) {
   .form-grid,
-  .offer-facts {
+  .offer-facts,
+  .auth-form {
     grid-template-columns: 1fr;
   }
 

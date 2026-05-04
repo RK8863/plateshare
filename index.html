@@ -45,6 +45,26 @@
         </article>
       </section>
 
+      <section class="account-panel" aria-label="Account and role">
+        <div class="account-summary" id="account-summary">
+          <p class="section-kicker">Access</p>
+          <h2>Sign in to use role actions</h2>
+          <p id="account-copy">Donors post surplus food. Receivers claim pickups.</p>
+        </div>
+        <form class="auth-form" id="auth-form">
+          <input id="display-name" type="text" placeholder="Name or organization" autocomplete="organization" />
+          <input id="email" type="email" placeholder="Email" autocomplete="email" required />
+          <input id="password" type="password" placeholder="Password" autocomplete="current-password" required />
+          <select id="role">
+            <option value="donor">Donor</option>
+            <option value="receiver">Receiver</option>
+          </select>
+          <button type="submit" data-auth-action="signin">Sign in</button>
+          <button type="button" class="secondary-button" id="signup-button">Create account</button>
+          <button type="button" class="secondary-button" id="signout-button" hidden>Sign out</button>
+        </form>
+      </section>
+
       <section class="workspace">
         <article class="panel offer-panel">
           <div class="panel-heading">
@@ -53,6 +73,7 @@
               <h2>Post surplus food</h2>
             </div>
           </div>
+          <p class="panel-note" id="donor-note">Sign in as a donor to post food.</p>
 
           <form id="offer-form" class="offer-form">
             <label>
@@ -142,6 +163,7 @@
           </div>
         </dl>
         <p class="safety-copy"></p>
+        <p class="owner-copy"></p>
         <div class="card-actions">
           <button class="claim-button" type="button">Claim pickup</button>
           <button class="secondary-button complete-button" type="button">Mark delivered</button>
